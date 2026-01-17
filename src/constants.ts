@@ -3,7 +3,7 @@
  */
 
 // 表情の種類
-export const EXPRESSIONS = ["normal", "smile", "eye_sparkle", "suprise", "shock"] as const;
+export const EXPRESSIONS = ["normal", "smile", "eye_sparkle", "surprise", "shock"] as const;
 export type Expression = (typeof EXPRESSIONS)[number];
 
 // 表情の表示時間（ミリ秒）

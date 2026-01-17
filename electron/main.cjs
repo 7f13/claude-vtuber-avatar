@@ -113,7 +113,11 @@ const MAX_TEXT_LENGTH = 200;
 const VOICEVOX_SPEED_SCALE = 1.2;
 const DEFAULT_AUDIO_DURATION_MS = 2000;
 const LIPSYNC_INTERVAL_MS = 120;
-const EXPRESSIONS = ['normal', 'smile', 'eye_sparkle', 'suprise', 'shock'];
+const EXPRESSIONS = ['normal', 'smile', 'eye_sparkle', 'surprise', 'shock'];
+
+// Session Watcher 定数
+const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
+const SESSION_DEBOUNCE_MS = 100;
 
 const MESSAGES = {
   SESSION_START: 'やあ、ぼくずんだもんなのだ！今日もよろしくなのだ！',
@@ -214,13 +218,19 @@ function notifyExpression(name, duration) {
 // ========== 音声合成 ==========
 let currentPlayProcess = null;
 let currentTempFile = null;
-let currentAbortController = null;
+let speechQueue = Promise.resolve();
+
+function enqueueSpeech(task) {
+  // 直列化して AbortError を潰す（イベントが連続しても読み上げが飛ばない）
+  speechQueue = speechQueue
+    .then(task)
+    .catch((err) => {
+      debugLog(`Speech queue error: ${err?.message || err}`);
+    });
+  return speechQueue;
+}
 
 function stopCurrentPlayback() {
-  if (currentAbortController) {
-    currentAbortController.abort();
-    currentAbortController = null;
-  }
   if (currentPlayProcess) {
     console.log('Stopping previous playback...');
     currentPlayProcess.kill();
@@ -251,95 +261,85 @@ function getWavDuration(buffer) {
 }
 
 async function speakWithVoicevox(text) {
-  debugLog(`speakWithVoicevox called: ${text}`);
-  stopCurrentPlayback();
+  return enqueueSpeech(async () => {
+    debugLog(`speakWithVoicevox called: ${text}`);
 
-  const abortController = new AbortController();
-  currentAbortController = abortController;
+    const truncatedText = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) + '...' : text;
 
-  const truncatedText = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) + '...' : text;
+    try {
+      debugLog('Calling VOICEVOX audio_query...');
+      const queryRes = await fetch(
+        `${VOICEVOX_URL}/audio_query?text=${encodeURIComponent(truncatedText)}&speaker=${SPEAKER_ID}`,
+        { method: 'POST' }
+      );
+      debugLog(`audio_query response status: ${queryRes.status}`);
 
-  try {
-    debugLog(`Calling VOICEVOX audio_query...`);
-    const queryRes = await fetch(
-      `${VOICEVOX_URL}/audio_query?text=${encodeURIComponent(truncatedText)}&speaker=${SPEAKER_ID}`,
-      { method: 'POST', signal: abortController.signal }
-    );
-    debugLog(`audio_query response status: ${queryRes.status}`);
+      if (!queryRes.ok) throw new Error(`Audio query failed: ${queryRes.status}`);
 
-    if (!queryRes.ok) throw new Error(`Audio query failed: ${queryRes.status}`);
+      const query = await queryRes.json();
+      query.speedScale = VOICEVOX_SPEED_SCALE;
+      debugLog('Got query, calling synthesis...');
 
-    const query = await queryRes.json();
-    query.speedScale = VOICEVOX_SPEED_SCALE;
-    debugLog(`Got query, calling synthesis...`);
-
-    if (abortController.signal.aborted) return;
-
-    const synthesisRes = await fetch(
-      `${VOICEVOX_URL}/synthesis?speaker=${SPEAKER_ID}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(query),
-        signal: abortController.signal,
-      }
-    );
-
-    debugLog(`synthesis response status: ${synthesisRes.status}`);
-    if (!synthesisRes.ok) throw new Error(`Synthesis failed: ${synthesisRes.status}`);
-    if (abortController.signal.aborted) return;
-
-    debugLog(`Getting audio buffer...`);
-    const audioBuffer = await synthesisRes.arrayBuffer();
-    debugLog(`Audio buffer size: ${audioBuffer.byteLength}`);
-    const tempFile = path.join(os.tmpdir(), `claude-voice-${Date.now()}.wav`);
-    const audioData = Buffer.from(audioBuffer);
-    await fs.writeFile(tempFile, audioData);
-    currentTempFile = tempFile;
-
-    const durationMs = getWavDuration(audioData);
-    notifyLipsyncStart(durationMs);
-
-    const playCommand = process.platform === 'darwin' ? 'afplay' : 'aplay';
-    debugLog(`Playing audio: ${playCommand} ${tempFile}`);
-
-    await new Promise((resolve, reject) => {
-      const proc = spawn(playCommand, [tempFile]);
-      currentPlayProcess = proc;
-
-      proc.stderr.on('data', (data) => {
-        debugLog(`afplay stderr: ${data}`);
-      });
-
-      proc.on('close', (code) => {
-        debugLog(`afplay exited with code: ${code}`);
-        if (currentPlayProcess === proc) currentPlayProcess = null;
-        notifyLipsyncStop();
-        if (currentTempFile === tempFile) {
-          fs.unlink(tempFile).catch(() => {});
-          currentTempFile = null;
+      const synthesisRes = await fetch(
+        `${VOICEVOX_URL}/synthesis?speaker=${SPEAKER_ID}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(query),
         }
-        resolve();
-      });
+      );
 
-      proc.on('error', (err) => {
-        if (currentPlayProcess === proc) currentPlayProcess = null;
-        notifyLipsyncStop();
-        reject(err);
+      debugLog(`synthesis response status: ${synthesisRes.status}`);
+      if (!synthesisRes.ok) throw new Error(`Synthesis failed: ${synthesisRes.status}`);
+
+      debugLog('Getting audio buffer...');
+      const audioBuffer = await synthesisRes.arrayBuffer();
+      debugLog(`Audio buffer size: ${audioBuffer.byteLength}`);
+      const tempFile = path.join(os.tmpdir(), `claude-voice-${Date.now()}.wav`);
+      const audioData = Buffer.from(audioBuffer);
+      await fs.writeFile(tempFile, audioData);
+      currentTempFile = tempFile;
+
+      const durationMs = getWavDuration(audioData);
+      notifyLipsyncStart(durationMs);
+
+      const playCommand = process.platform === 'darwin' ? 'afplay' : 'aplay';
+      debugLog(`Playing audio: ${playCommand} ${tempFile}`);
+
+      await new Promise((resolve, reject) => {
+        const proc = spawn(playCommand, [tempFile]);
+        currentPlayProcess = proc;
+
+        proc.stderr?.on?.('data', (data) => {
+          debugLog(`afplay stderr: ${data}`);
+        });
+
+        proc.on('close', (code) => {
+          debugLog(`afplay exited with code: ${code}`);
+          if (currentPlayProcess === proc) currentPlayProcess = null;
+          notifyLipsyncStop();
+          if (currentTempFile === tempFile) {
+            fs.unlink(tempFile).catch(() => {});
+            currentTempFile = null;
+          }
+          resolve();
+        });
+
+        proc.on('error', (err) => {
+          if (currentPlayProcess === proc) currentPlayProcess = null;
+          notifyLipsyncStop();
+          reject(err);
+        });
       });
-    });
-  } catch (error) {
-    debugLog(`speakWithVoicevox error: ${error.name} - ${error.message}`);
-    if (error.name === 'AbortError') {
-      console.log('Speech synthesis cancelled');
-      return;
+    } catch (error) {
+      debugLog(`speakWithVoicevox error: ${error?.name} - ${error?.message}`);
+      if (error?.message && String(error.message).includes('ECONNREFUSED')) {
+        console.error('VOICEVOX is not running! Please start VOICEVOX first.');
+      } else {
+        console.error('Speech error:', error);
+      }
     }
-    if (error.message && error.message.includes('ECONNREFUSED')) {
-      console.error('VOICEVOX is not running! Please start VOICEVOX first.');
-    } else {
-      console.error('Speech error:', error);
-    }
-  }
+  });
 }
 
 // ========== メッセージフォーマット ==========
@@ -347,11 +347,11 @@ const EXPRESSION_KEYWORDS = {
   shock: ['error', 'failed', 'exception', 'crash', 'fatal', 'エラー', '失敗', '問題', 'だめ', '無理', '壊れ'],
   smile: ['完了', '成功', 'done', 'success', 'passed', 'ok', 'できた', 'やった', 'よし', 'いいね', 'ばっちり'],
   eye_sparkle: ['見つけ', 'found', '発見', 'ある', 'いた', 'なるほど', 'わかった', '理解', 'ひらめ'],
-  suprise: ['おお', 'すごい', 'wow', 'amazing', '！', 'えっ', 'まじ', '本当', 'びっくり'],
+  surprise: ['おお', 'すごい', 'wow', 'amazing', '！', 'えっ', 'まじ', '本当', 'びっくり'],
   normal: [],
 };
 
-const EXPRESSION_PRIORITY = ['shock', 'smile', 'eye_sparkle', 'suprise'];
+const EXPRESSION_PRIORITY = ['shock', 'smile', 'eye_sparkle', 'surprise'];
 
 function detectExpression(message) {
   const lowerMsg = message.toLowerCase();
@@ -395,7 +395,7 @@ async function formatClaudeMessage(data) {
   }
 
   if (data.hook_event_name === 'PermissionRequest') {
-    notifyExpression('suprise', EXPRESSION_DURATION_MS);
+    notifyExpression('surprise', EXPRESSION_DURATION_MS);
     return convertReadings(getProjectPrefix(data) + MESSAGES.PERMISSION_REQUEST);
   }
 
@@ -505,6 +505,170 @@ function initServer() {
   });
 }
 
+// ========== Session Watcher ==========
+// Claude Codeのセッションファイルを監視してアシスタントメッセージを読み上げる
+const sessionWatcher = {
+  processedMessages: new Set(),
+  filePositions: new Map(),
+  debounceTimer: null,
+  watchers: [],
+
+  extractTextFromContent(content) {
+    if (!Array.isArray(content)) return null;
+    const textParts = content
+      .filter((c) => c.type === 'text' && c.text)
+      .map((c) => c.text);
+    return textParts.length > 0 ? textParts.join('\n') : null;
+  },
+
+  async processNewLines(filePath) {
+    try {
+      const stats = syncFs.statSync(filePath);
+      const lastPosition = this.filePositions.get(filePath) || 0;
+
+      if (stats.size <= lastPosition) return;
+
+      this.filePositions.set(filePath, stats.size);
+
+      const buffer = Buffer.alloc(stats.size - lastPosition);
+      const fd = syncFs.openSync(filePath, 'r');
+      syncFs.readSync(fd, buffer, 0, buffer.length, lastPosition);
+      syncFs.closeSync(fd);
+
+      const content = buffer.toString('utf-8');
+      const lines = content.split('\n');
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const data = JSON.parse(line);
+
+          if (
+            data.type === 'assistant' &&
+            data.message?.role === 'assistant' &&
+            !this.processedMessages.has(data.uuid)
+          ) {
+            const text = this.extractTextFromContent(data.message.content);
+
+            if (text) {
+              debugLog(`[SessionWatcher] New message: ${text.substring(0, 50)}...`);
+
+              // formatClaudeMessageを使ってメッセージを整形
+              const formattedMessage = await formatClaudeMessage({
+                hook_event_name: 'AssistantMessage',
+                message: text,
+              });
+
+              if (formattedMessage) {
+                await speakWithVoicevox(formattedMessage);
+              }
+
+              this.processedMessages.add(data.uuid);
+            }
+          }
+        } catch (e) {
+          // JSON parse error - skip incomplete lines
+        }
+      }
+    } catch (err) {
+      debugLog(`[SessionWatcher] Error processing file: ${err.message}`);
+    }
+  },
+
+  findLatestSessionFile(projectDir) {
+    try {
+      const files = syncFs.readdirSync(projectDir);
+      const jsonlFiles = files
+        .filter((f) => f.endsWith('.jsonl'))
+        .map((f) => ({
+          name: f,
+          path: path.join(projectDir, f),
+          mtime: syncFs.statSync(path.join(projectDir, f)).mtime,
+        }))
+        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+      return jsonlFiles.length > 0 ? jsonlFiles[0].path : null;
+    } catch {
+      return null;
+    }
+  },
+
+  startWatching() {
+    debugLog('[SessionWatcher] Starting...');
+
+    if (!syncFs.existsSync(CLAUDE_PROJECTS_DIR)) {
+      debugLog(`[SessionWatcher] Projects dir not found: ${CLAUDE_PROJECTS_DIR}`);
+      return;
+    }
+
+    // 全プロジェクトディレクトリを監視
+    const projectDirs = syncFs.readdirSync(CLAUDE_PROJECTS_DIR)
+      .map((name) => path.join(CLAUDE_PROJECTS_DIR, name))
+      .filter((p) => syncFs.statSync(p).isDirectory());
+
+    debugLog(`[SessionWatcher] Found ${projectDirs.length} project directories`);
+
+    for (const projectDir of projectDirs) {
+      this.watchProjectDir(projectDir);
+    }
+
+    // 新しいプロジェクトディレクトリの監視
+    const mainWatcher = syncFs.watch(CLAUDE_PROJECTS_DIR, (eventType, filename) => {
+      if (!filename) return;
+      const newDir = path.join(CLAUDE_PROJECTS_DIR, filename);
+      if (syncFs.existsSync(newDir) && syncFs.statSync(newDir).isDirectory()) {
+        this.watchProjectDir(newDir);
+      }
+    });
+    this.watchers.push(mainWatcher);
+  },
+
+  watchProjectDir(projectDir) {
+    let currentSessionFile = this.findLatestSessionFile(projectDir);
+
+    if (currentSessionFile) {
+      // 既存内容をスキップ
+      this.filePositions.set(currentSessionFile, syncFs.statSync(currentSessionFile).size);
+      debugLog(`[SessionWatcher] Watching: ${path.basename(projectDir)}`);
+    }
+
+    try {
+      const watcher = syncFs.watch(projectDir, (eventType, filename) => {
+        if (!filename || !filename.endsWith('.jsonl')) return;
+
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+
+        this.debounceTimer = setTimeout(async () => {
+          const latestFile = this.findLatestSessionFile(projectDir);
+
+          if (latestFile && latestFile !== currentSessionFile) {
+            debugLog(`[SessionWatcher] New session: ${path.basename(latestFile)}`);
+            currentSessionFile = latestFile;
+            this.filePositions.set(currentSessionFile, 0);
+          }
+
+          if (currentSessionFile && syncFs.existsSync(currentSessionFile)) {
+            await this.processNewLines(currentSessionFile);
+          }
+        }, SESSION_DEBOUNCE_MS);
+      });
+
+      this.watchers.push(watcher);
+    } catch (err) {
+      debugLog(`[SessionWatcher] Error watching ${projectDir}: ${err.message}`);
+    }
+  },
+
+  stop() {
+    for (const watcher of this.watchers) {
+      watcher.close();
+    }
+    this.watchers = [];
+    debugLog('[SessionWatcher] Stopped');
+  },
+};
+
 // ========== Electron ==========
 let mainWindow;
 
@@ -563,6 +727,9 @@ Make sure VOICEVOX is running on http://localhost:50021
   // ウィンドウ作成
   debugLog('Creating window...');
   createWindow();
+
+  // Session Watcher開始
+  sessionWatcher.startWatching();
 }).catch(err => {
   debugLog(`app.whenReady error: ${err.message}`);
 });
@@ -581,6 +748,7 @@ app.on('activate', () => {
 
 app.on('quit', () => {
   try {
+    sessionWatcher.stop();
     if (server) server.close();
   } catch (e) {
     // ignore

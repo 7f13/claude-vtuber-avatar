@@ -28,7 +28,7 @@ const EXPRESSION_KEYWORDS: Record<Expression, string[]> = {
     "見つけ", "found", "発見", "ある", "いた",
     "なるほど", "わかった", "理解", "ひらめ",
   ],
-  suprise: [
+  surprise: [
     "おお", "すごい", "wow", "amazing", "！",
     "えっ", "まじ", "本当", "びっくり",
   ],
@@ -36,7 +36,7 @@ const EXPRESSION_KEYWORDS: Record<Expression, string[]> = {
 };
 
 // 表情検出の優先順位
-const EXPRESSION_PRIORITY: Expression[] = ["shock", "smile", "eye_sparkle", "suprise"];
+const EXPRESSION_PRIORITY: Expression[] = ["shock", "smile", "eye_sparkle", "surprise"];
 
 // セッション中の作業履歴
 let workHistory: string[] = [];

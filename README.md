@@ -142,7 +142,7 @@ curl -X POST http://localhost:3456/speak/text \
   -H 'Content-Type: application/json' \
   -d '{"text": "こんにちは、ボクはずんだもんなのだ！"}'
 
-# 表情を変更（smile, shock, suprise, eye_sparkle, normal）
+# 表情を変更（smile, shock, surprise, eye_sparkle, normal）
 curl -X POST http://localhost:3456/expression \
   -H 'Content-Type: application/json' \
   -d '{"name": "smile", "duration": 3000}'
@@ -155,7 +155,7 @@ curl -X POST http://localhost:3456/expression \
 | `normal` | zundamon.png | （デフォルト） |
 | `smile` | smile.png | 完了, 成功, done, success |
 | `eye_sparkle` | eye_sparkle.png | 見つけ, found, なるほど |
-| `suprise` | suprise.png | おお, すごい, wow |
+| `surprise` | surprise.png | おお, すごい, wow |
 | `shock` | shock.png | error, failed, エラー |
 
 表情画像は `electron/assets/` に配置。
