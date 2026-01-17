@@ -1,0 +1,65 @@
+{
+  "name": "zundamon-avatar",
+  "version": "0.1.0",
+  "description": "ずんだもん VTuber Avatar for Claude Code",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc",
+    "watch-session": "tsx scripts/session-watcher.ts",
+    "electron": "electron electron/main.cjs",
+    "avatar": "electron electron/main.cjs",
+    "dist": "electron-builder --mac",
+    "dist:dir": "electron-builder --mac --dir",
+    "dist:mac:portable": "node scripts/dist-mac-portable.mjs"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.18.1",
+    "electron": "^28.3.3",
+    "electron-builder": "^26.4.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "build": {
+    "appId": "com.zundamon.avatar",
+    "productName": "ずんだもん",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "config/**/*",
+      "node_modules/**/*",
+      "!node_modules/@types/**/*",
+      "!node_modules/typescript/**/*",
+      "!node_modules/tsx/**/*",
+      "!node_modules/electron/**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dir",
+      "icon": "electron/assets/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "extraResources": [
+      {
+        "from": "config",
+        "to": "config"
+      },
+      {
+        "from": "node_modules/electron/dist/Electron.app/Contents/Resources/default_app.asar",
+        "to": "default_app.asar"
+      }
+    ]
+  }
+}

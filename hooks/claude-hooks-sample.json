@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Read|Bash|Glob|Grep|WebSearch|WebFetch|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat)\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d '{\"hook_event_name\": \"Stop\"}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat)\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

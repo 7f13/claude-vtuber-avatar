@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ずんだもん</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    #container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    .avatar {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.1s ease;
+      border-radius: 20px;
+      position: absolute;
+    }
+
+    .avatar.talking {
+      animation: bounce 0.15s ease-in-out infinite alternate;
+    }
+
+    @keyframes bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-3px); }
+    }
+
+    /* 口の切り替え用（画像が2枚ある場合） */
+    #mouth-closed { display: block; }
+    #mouth-open { display: none; position: absolute; top: 0; left: 0; }
+
+    .talking #mouth-closed { display: none; }
+    .talking #mouth-open { display: block; }
+
+    /* プレースホルダー（画像がない場合） */
+    #placeholder {
+      width: 200px;
+      height: 300px;
+      background: linear-gradient(135deg, #8BC34A 0%, #4CAF50 100%);
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-family: sans-serif;
+      font-size: 14px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #placeholder .face {
+      font-size: 60px;
+      margin-bottom: 10px;
+    }
+
+    #placeholder.talking .face {
+      animation: talk 0.15s ease-in-out infinite alternate;
+    }
+
+    @keyframes talk {
+      from { transform: scale(1); }
+      to { transform: scale(1.05); }
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <!-- 画像がない場合のプレースホルダー -->
+    <div id="placeholder">
+      <div class="face">🟢</div>
+      <div>ずんだもん</div>
+      <div style="font-size: 10px; margin-top: 10px;">
+        assets/zundamon.png<br>を配置してね
+      </div>
+    </div>
+
+    <!-- 実際の画像（assetsフォルダに配置後表示） -->
+    <!-- <img id="avatar" src="assets/zundamon.png" alt="ずんだもん"> -->
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+
+    const placeholder = document.getElementById('placeholder');
+    const container = document.getElementById('container');
+
+    // 表情リスト
+    const expressions = {
+      normal: 'zundamon.png',
+      open: 'zundamon_open.png',
+      smile: 'smile.png',
+      eye_sparkle: 'eye_sparkle.png',
+      suprise: 'suprise.png',
+      shock: 'shock.png',
+    };
+
+    let currentExpression = 'normal';
+    const loadedImages = {};
+
+    // 画像を全部読み込む
+    Object.entries(expressions).forEach(([name, file]) => {
+      const filePath = path.join(__dirname, 'assets', file);
+      if (fs.existsSync(filePath)) {
+        const img = document.createElement('img');
+        img.id = `avatar-${name}`;
+        img.className = 'avatar';
+        img.src = `assets/${file}`;
+        img.style.display = name === 'normal' ? 'block' : 'none';
+        container.appendChild(img);
+        loadedImages[name] = img;
+      }
+    });
+
+    if (Object.keys(loadedImages).length > 0) {
+      placeholder.style.display = 'none';
+    }
+
+    // 表情切り替え関数
+    function setExpression(name) {
+      if (!loadedImages[name]) return;
+      Object.entries(loadedImages).forEach(([key, img]) => {
+        img.style.display = key === name ? 'block' : 'none';
+      });
+      currentExpression = name;
+    }
+
+    // サーバーからのWebSocket接続
+    const ws = new WebSocket('ws://localhost:3456');
+
+    ws.onopen = () => {
+      console.log('Connected to server');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'lipsync-start') {
+        startLipsync(data.duration);
+      } else if (data.type === 'lipsync-stop') {
+        stopLipsync();
+      } else if (data.type === 'expression') {
+        setExpression(data.name);
+        // 一定時間後にnormalに戻す
+        if (data.duration) {
+          setTimeout(() => setExpression('normal'), data.duration);
+        }
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.log('WebSocket error:', error);
+    };
+
+    let lipsyncTimeout = null;
+    let lipsyncInterval = null;
+
+    function startLipsync(duration) {
+      // 前のリップシンクを停止
+      stopLipsync();
+
+      // 口パク（normal と open を切り替え）
+      if (loadedImages.normal && loadedImages.open) {
+        let isOpen = false;
+        lipsyncInterval = setInterval(() => {
+          isOpen = !isOpen;
+          loadedImages.normal.style.display = isOpen ? 'none' : 'block';
+          loadedImages.open.style.display = isOpen ? 'block' : 'none';
+          // 他の表情は非表示
+          Object.entries(loadedImages).forEach(([key, img]) => {
+            if (key !== 'normal' && key !== 'open') {
+              img.style.display = 'none';
+            }
+          });
+        }, 120);
+      }
+
+      // 指定時間後に停止
+      if (duration) {
+        lipsyncTimeout = setTimeout(() => {
+          stopLipsync();
+        }, duration);
+      }
+    }
+
+    function stopLipsync() {
+      if (lipsyncInterval) {
+        clearInterval(lipsyncInterval);
+        lipsyncInterval = null;
+      }
+      if (lipsyncTimeout) {
+        clearTimeout(lipsyncTimeout);
+        lipsyncTimeout = null;
+      }
+      // normalに戻す
+      setExpression('normal');
+    }
+
+    // IPCからのリップシンク制御
+    ipcRenderer.on('lipsync-start', (event, duration) => {
+      startLipsync(duration);
+    });
+
+    ipcRenderer.on('lipsync-stop', () => {
+      stopLipsync();
+    });
+  </script>
+</body>
+</html>
