@@ -85,6 +85,27 @@
       from { transform: scale(1); }
       to { transform: scale(1.05); }
     }
+
+    /* まばたきアニメーション */
+    @keyframes blink {
+      0%, 90%, 100% { transform: scaleY(1); }
+      95% { transform: scaleY(0.1); }
+    }
+
+    .avatar.blinking {
+      animation: blink 0.15s ease-in-out;
+    }
+
+    /* idle時の揺れアニメーション */
+    @keyframes idle-sway {
+      0%, 100% { transform: rotate(0deg) translateY(0); }
+      25% { transform: rotate(0.5deg) translateY(-1px); }
+      75% { transform: rotate(-0.5deg) translateY(-1px); }
+    }
+
+    .avatar.idle {
+      animation: idle-sway 4s ease-in-out infinite;
+    }
   </style>
 </head>
 <body>
@@ -118,6 +139,7 @@
       eye_sparkle: 'eye_sparkle.png',
       suprise: 'suprise.png',
       shock: 'shock.png',
+      close_eye: 'close_eye.png',
     };
 
     let currentExpression = 'normal';
@@ -228,6 +250,92 @@
     ipcRenderer.on('lipsync-stop', () => {
       stopLipsync();
     });
+
+    // ========== Idle アニメーション ==========
+    let isIdle = true;
+    let blinkInterval = null;
+
+    function startIdleAnimation() {
+      isIdle = true;
+      // idleクラスを追加
+      Object.values(loadedImages).forEach(img => {
+        img.classList.add('idle');
+      });
+      // まばたきを開始
+      startBlinking();
+    }
+
+    function stopIdleAnimation() {
+      isIdle = false;
+      // idleクラスを削除
+      Object.values(loadedImages).forEach(img => {
+        img.classList.remove('idle');
+        img.classList.remove('blinking');
+      });
+      // まばたきを停止
+      if (blinkInterval) {
+        clearInterval(blinkInterval);
+        blinkInterval = null;
+      }
+    }
+
+    function doBlink() {
+      if (!isIdle) return;
+      const normalImg = loadedImages.normal;
+      const closeEyeImg = loadedImages.close_eye;
+
+      if (normalImg && closeEyeImg && normalImg.style.display !== 'none') {
+        // close_eye画像でまばたき
+        normalImg.style.display = 'none';
+        closeEyeImg.style.display = 'block';
+        setTimeout(() => {
+          closeEyeImg.style.display = 'none';
+          normalImg.style.display = 'block';
+        }, 100);
+      } else if (normalImg && normalImg.style.display !== 'none') {
+        // フォールバック: CSSアニメーション
+        normalImg.classList.add('blinking');
+        setTimeout(() => {
+          normalImg.classList.remove('blinking');
+        }, 150);
+      }
+    }
+
+    function startBlinking() {
+      if (blinkInterval) clearInterval(blinkInterval);
+      // 3〜5秒のランダム間隔でまばたき
+      function scheduleNextBlink() {
+        const delay = 3000 + Math.random() * 2000;
+        blinkInterval = setTimeout(() => {
+          doBlink();
+          if (isIdle) scheduleNextBlink();
+        }, delay);
+      }
+      scheduleNextBlink();
+    }
+
+    // リップシンク時はidle停止
+    const originalStartLipsync = startLipsync;
+    startLipsync = function(duration) {
+      stopIdleAnimation();
+      originalStartLipsync(duration);
+    };
+
+    const originalStopLipsync = stopLipsync;
+    stopLipsync = function() {
+      originalStopLipsync();
+      // 少し待ってからidleに戻る
+      setTimeout(() => {
+        if (!lipsyncInterval) {
+          startIdleAnimation();
+        }
+      }, 500);
+    };
+
+    // 初期化時にidleアニメーション開始
+    if (Object.keys(loadedImages).length > 0) {
+      startIdleAnimation();
+    }
   </script>
 </body>
 </html>

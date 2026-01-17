@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d '{\"hook_event_name\": \"SessionStart\"}'",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"{\\\"hook_event_name\\\": \\\"SessionStart\\\", \\\"project\\\": \\\"$(basename $PWD)\\\"}\"",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d '{\"hook_event_name\": \"SessionEnd\"}'",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"{\\\"hook_event_name\\\": \\\"SessionEnd\\\", \\\"project\\\": \\\"$(basename $PWD)\\\"}\"",
             "timeout": 10
           }
         ]
@@ -27,19 +27,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat)\"",
-            "timeout": 30
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"{\\\"hook_event_name\\\": \\\"PermissionRequest\\\", \\\"project\\\": \\\"$(basename $PWD)\\\"}\"",
+            "timeout": 10
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|Read|Bash|Glob|Grep|WebSearch|WebFetch|Task",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat)\"",
+            "command": "cat > /tmp/zunda-hook.json && curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat /tmp/zunda-hook.json | sed 's/}$/,\"project\":\"'$(basename $PWD)'\"}/')\"",
             "timeout": 30
           }
         ]

@@ -3,6 +3,12 @@
     "tools": [],
     "events": ["SessionStart", "SessionEnd", "AssistantMessage", "PermissionRequest"]
   },
+  "projectMessages": {
+    "claude-vtuber-avatar": {
+      "SessionStart": "ずんだもんアバターの開発を始めるのだ！",
+      "SessionEnd": "アバターの開発おつかれさまなのだ！"
+    }
+  },
   "readings": {
     ".ts": "ティーエス",
     ".tsx": "ティーエスエックス",

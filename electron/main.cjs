@@ -120,7 +120,26 @@ const MESSAGES = {
   SESSION_END: 'おつかれさまなのだ！またねなのだ！',
   LONG_MESSAGE_FALLBACK: '作業が完了したのだ、詳細はターミナルを確認するのだ',
   PERMISSION_REQUEST: 'これ実行していいのだ？',
+  ERROR_BASH: 'あれ、エラーが出ちゃったのだ！',
+  ERROR_BUILD: 'ビルドが失敗したのだ！',
+  ERROR_TEST: 'テストが失敗したのだ！',
 };
+
+function getProjectPrefix(data) {
+  if (data.project) {
+    return `${data.project}で、`;
+  }
+  return '';
+}
+
+function getProjectMessage(data, eventName) {
+  const project = data.project;
+  if (project && config.projectMessages && config.projectMessages[project]) {
+    const projectMsg = config.projectMessages[project][eventName];
+    if (projectMsg) return projectMsg;
+  }
+  return null;
+}
 
 // ========== 設定読み込み ==========
 function getConfigPath() {
@@ -360,22 +379,41 @@ async function formatClaudeMessage(data) {
     }
 
     notifyExpression('smile', EXPRESSION_DURATION_MS);
-    return convertReadings(MESSAGES.LONG_MESSAGE_FALLBACK);
+    return convertReadings(getProjectPrefix(data) + MESSAGES.LONG_MESSAGE_FALLBACK);
   }
 
   if (data.hook_event_name === 'SessionStart') {
     notifyExpression('smile', EXPRESSION_DURATION_MS);
-    return convertReadings(MESSAGES.SESSION_START);
+    const customMsg = getProjectMessage(data, 'SessionStart');
+    return convertReadings(customMsg || (getProjectPrefix(data) + MESSAGES.SESSION_START));
   }
 
   if (data.hook_event_name === 'SessionEnd') {
     notifyExpression('smile', EXPRESSION_DURATION_MS);
-    return convertReadings(MESSAGES.SESSION_END);
+    const customMsg = getProjectMessage(data, 'SessionEnd');
+    return convertReadings(customMsg || (getProjectPrefix(data) + MESSAGES.SESSION_END));
   }
 
   if (data.hook_event_name === 'PermissionRequest') {
     notifyExpression('suprise', EXPRESSION_DURATION_MS);
-    return convertReadings(MESSAGES.PERMISSION_REQUEST);
+    return convertReadings(getProjectPrefix(data) + MESSAGES.PERMISSION_REQUEST);
+  }
+
+  // PostToolUse: Bashコマンドのエラー検出
+  if (data.tool_name === 'Bash' && data.tool_error) {
+    const command = data.tool_input?.command || '';
+    notifyExpression('shock', EXPRESSION_DURATION_MS);
+
+    // ビルド系コマンドの検出
+    if (/\b(build|compile|tsc|webpack|vite|esbuild)\b/i.test(command)) {
+      return convertReadings(getProjectPrefix(data) + MESSAGES.ERROR_BUILD);
+    }
+    // テスト系コマンドの検出
+    if (/\b(test|jest|vitest|mocha|pytest|rspec)\b/i.test(command)) {
+      return convertReadings(getProjectPrefix(data) + MESSAGES.ERROR_TEST);
+    }
+    // その他のエラー
+    return convertReadings(getProjectPrefix(data) + MESSAGES.ERROR_BASH);
   }
 
   return null;

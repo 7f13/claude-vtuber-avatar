@@ -137,6 +137,12 @@ if (fs.existsSync(configSrc)) {
   fs.cpSync(configSrc, path.join(resourcesDest, 'config'), { recursive: true, dereference: false });
 }
 
+// Remove default_app.asar to ensure our app.asar is loaded
+const defaultAppAsar = path.join(resourcesDest, 'default_app.asar');
+if (fs.existsSync(defaultAppAsar)) {
+  fs.rmSync(defaultAppAsar);
+}
+
 // Optionally replace icon if an .icns exists
 const iconSrc = path.join(rootDir, 'electron', 'assets', 'icon.icns');
 if (fs.existsSync(iconSrc)) {
