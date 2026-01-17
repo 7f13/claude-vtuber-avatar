@@ -690,10 +690,17 @@ function createWindow() {
     resizable: true,
     skipTaskbar: true,
     roundedCorners: false,
+    show: true, // 即座に表示
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
+  });
+
+  // 準備完了時に表示
+  mainWindow.once('ready-to-show', () => {
+    debugLog('Window ready-to-show');
+    mainWindow.show();
   });
 
   const htmlPath = path.join(__dirname, 'index.html');
@@ -710,26 +717,29 @@ debugLog('Setting up app.whenReady...');
 
 app.whenReady().then(() => {
   debugLog('app.whenReady fired');
-  // サーバー初期化・起動
-  initServer();
-  server.listen(PORT, () => {
-    debugLog(`Server listening on port ${PORT}`);
-    console.log(`
+
+  // ウィンドウ作成を最優先で実行
+  debugLog('Creating window...');
+  createWindow();
+
+  // サーバー初期化・起動（ウィンドウ表示後に非同期で）
+  setImmediate(() => {
+    initServer();
+    server.listen(PORT, () => {
+      debugLog(`Server listening on port ${PORT}`);
+      console.log(`
 ╔════════════════════════════════════════╗
 ║   ずんだもん VTuber Avatar             ║
 ║   Server: http://localhost:${PORT}        ║
 ╚════════════════════════════════════════╝
 
 Make sure VOICEVOX is running on http://localhost:50021
-    `);
+      `);
+    });
+
+    // Session Watcher開始
+    sessionWatcher.startWatching();
   });
-
-  // ウィンドウ作成
-  debugLog('Creating window...');
-  createWindow();
-
-  // Session Watcher開始
-  sessionWatcher.startWatching();
 }).catch(err => {
   debugLog(`app.whenReady error: ${err.message}`);
 });

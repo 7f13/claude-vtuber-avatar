@@ -39,6 +39,11 @@
       position: absolute;
     }
 
+    /* ウィンドウ全体でドラッグ可能 */
+    html, body, #container {
+      -webkit-app-region: drag;
+    }
+
     .avatar.talking {
       animation: bounce 0.15s ease-in-out infinite alternate;
     }
@@ -336,6 +341,7 @@
     if (Object.keys(loadedImages).length > 0) {
       startIdleAnimation();
     }
+
   </script>
 </body>
 </html>
