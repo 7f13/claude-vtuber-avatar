@@ -1,7 +1,7 @@
 {
   "speakEvents": {
     "tools": [],
-    "events": ["SessionStart", "SessionEnd", "AssistantMessage"]
+    "events": ["SessionStart", "SessionEnd", "AssistantMessage", "PermissionRequest"]
   },
   "readings": {
     ".ts": "ティーエス",

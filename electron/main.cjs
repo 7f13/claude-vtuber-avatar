@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, screen } = require('electron');
 
 // GPU関連のクラッシュを避ける設定
 // `disable-gpu` と `disable-software-rasterizer` を同時に立てると逃げ道が無くなり不安定化しやすい。
@@ -108,7 +108,7 @@ const PORT = 3456;
 const VOICEVOX_URL = process.env.VOICEVOX_URL || 'http://127.0.0.1:50021';
 const SPEAKER_ID = process.env.VOICEVOX_SPEAKER_ID || '3';
 const EXPRESSION_DURATION_MS = 3000;
-const SHORT_MESSAGE_THRESHOLD = 100;
+const SHORT_MESSAGE_THRESHOLD = 300;
 const MAX_TEXT_LENGTH = 200;
 const VOICEVOX_SPEED_SCALE = 1.2;
 const DEFAULT_AUDIO_DURATION_MS = 2000;
@@ -119,6 +119,7 @@ const MESSAGES = {
   SESSION_START: 'やあ、ぼくずんだもんなのだ！今日もよろしくなのだ！',
   SESSION_END: 'おつかれさまなのだ！またねなのだ！',
   LONG_MESSAGE_FALLBACK: '作業が完了したのだ、詳細はターミナルを確認するのだ',
+  PERMISSION_REQUEST: 'これ実行していいのだ？',
 };
 
 // ========== 設定読み込み ==========
@@ -372,6 +373,11 @@ async function formatClaudeMessage(data) {
     return convertReadings(MESSAGES.SESSION_END);
   }
 
+  if (data.hook_event_name === 'PermissionRequest') {
+    notifyExpression('suprise', EXPRESSION_DURATION_MS);
+    return convertReadings(MESSAGES.PERMISSION_REQUEST);
+  }
+
   return null;
 }
 
@@ -465,11 +471,16 @@ function initServer() {
 let mainWindow;
 
 function createWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const windowWidth = 300;
+  const windowHeight = 400;
+
   mainWindow = new BrowserWindow({
-    width: 300,
-    height: 400,
-    x: 100,
-    y: 100,
+    width: windowWidth,
+    height: windowHeight,
+    x: screenWidth - windowWidth - 20,
+    y: screenHeight - windowHeight - 20,
     transparent: true,
     frame: false,
     alwaysOnTop: true,

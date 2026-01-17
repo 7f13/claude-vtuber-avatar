@@ -1,5 +1,38 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d '{\"hook_event_name\": \"SessionStart\"}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d '{\"hook_event_name\": \"SessionEnd\"}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3456/speak -H 'Content-Type: application/json' -d \"$(cat)\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|Read|Bash|Glob|Grep|WebSearch|WebFetch|Task",
