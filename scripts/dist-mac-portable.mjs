@@ -143,6 +143,19 @@ if (fs.existsSync(defaultAppAsar)) {
   fs.rmSync(defaultAppAsar);
 }
 
+// Remove ElectronAsarIntegrity from Info.plist (it references default_app.asar)
+const infoPlistPath = path.join(appDest, 'Contents', 'Info.plist');
+if (fs.existsSync(infoPlistPath)) {
+  let plistContent = fs.readFileSync(infoPlistPath, 'utf-8');
+  // Remove ElectronAsarIntegrity key and its nested dict value
+  // The pattern matches: <key>ElectronAsarIntegrity</key> followed by <dict>...</dict> (with nested dicts)
+  plistContent = plistContent.replace(
+    /\t<key>ElectronAsarIntegrity<\/key>\n\t<dict>[\s\S]*?<\/dict>\n\t<\/dict>\n/,
+    ''
+  );
+  fs.writeFileSync(infoPlistPath, plistContent);
+}
+
 // Optionally replace icon if an .icns exists
 const iconSrc = path.join(rootDir, 'electron', 'assets', 'icon.icns');
 if (fs.existsSync(iconSrc)) {

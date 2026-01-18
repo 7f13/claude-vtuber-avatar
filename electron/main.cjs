@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
 
 // GPU関連のクラッシュを避ける設定
 // `disable-gpu` と `disable-software-rasterizer` を同時に立てると逃げ道が無くなり不安定化しやすい。
@@ -214,6 +214,8 @@ function notifyLipsyncStop() {
 function notifyExpression(name, duration) {
   broadcast({ type: 'expression', name, duration });
 }
+
+
 
 // ========== 音声合成 ==========
 let currentPlayProcess = null;
